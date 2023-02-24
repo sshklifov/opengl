@@ -40,22 +40,17 @@ int main() {
     glViewport(0, 0, 800, 600);
     glfwSetFramebufferSizeCallback(window, resizeCallback);
 
-    float points[] = {
-        -0.5f, -0.5f, 0.0f,
-        0.5f, -0.5f, 0.0f,
-        0.0f,  0.5f, 0.0f
-    };
-
-    unsigned vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(vbo, sizeof(points), points, GL_STATIC_DRAW);
-
     const char* vertexShaderSource =
         "#version 330\n"
         "layout (location = 0) in vec3 aPos;\n"
+        "layout (location = 1) in vec3 aColor;\n"
+        "out vec3 vertexShaderColor;\n"
         "void main() {\n"
-        "   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+        "   vec4 t = vec4(-0.5, 0.0, 0.0, 0.0);\n"
+        "   vec4 res = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+        "   gl_Position = res + t;\n"
+        "   \n"
+        "   vertexShaderColor = aColor;\n"
         "}\n";
     unsigned vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
@@ -72,9 +67,10 @@ int main() {
 
     const char* fragmentShaderSource =
         "#version 330\n"
+        "in vec3 vertexShaderColor;\n"
         "out vec4 FragColor;\n"
         "void main() {\n"
-        "   FragColor = vec4(0.6, 0.2, 1.0, 1.0);\n"
+        "   FragColor = vec4(vertexShaderColor, 1.0);\n"
         "}\n";
     unsigned fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
@@ -98,15 +94,51 @@ int main() {
     if (!success) {
         printf("Problem with linking of shading program!\n");
     }
+    glUseProgram(program);
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
+    unsigned vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+    float points[] = {
+        -0.5f, -0.5f, 0.f, // point1
+        1.f, 0.f, 0.f,     // color1
+        0.5f, -0.5f, 0.f,  // point2
+        1.f, 0.f, 0.f,     // color2
+        0.0f,  0.5f, 0.f,  // point3
+        1.f, 0.f, 0.f,     // color3
+        // Second triangle
+        -0.5f, 0.5f, 1.f,    // point1
+        0.f, 1.f, 0.f,       // color1
+        0.0f, 0.0f, 1.f,     // point2
+        0.f, 1.f, 0.f,       // color2
+        -0.8f,  -0.5f, 1.f,  // point3
+        0.f, 1.f, 0.f,       // color3
+    };
+
+    unsigned vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(points), points, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), 0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    /* glEnable(GL_DEPTH_TEST); */
+
     while (!glfwWindowShouldClose(window)) {
-        glClearColor(0.6f, 0.2f, 1.f, 1.f);
+        glClearColor(1.f, 1.f, 1.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
         glfwPollEvents();
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        glUseProgram(program);
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
         glfwSwapBuffers(window);
     }
 

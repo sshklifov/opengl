@@ -1,2 +1,2 @@
 #!/bin/bash
-g++ src/main.cpp src/glad.c -lglfw -ldl -o window
+g++ -ggdb src/main.cpp src/glad.c -lglfw -ldl -o window
