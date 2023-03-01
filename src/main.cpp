@@ -7,6 +7,11 @@
 #include <GLFW/glfw3.h>
 #include "../include/glad/glad.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/transform.hpp>
+
 static void errorCallback(int error, const char* msg) {
 	printf("GLFW library error %d: %s\n", error, msg);
 }
@@ -21,6 +26,38 @@ static void resizeCallback(GLFWwindow* window, int width, int height) {
 	glViewport(0, 0, width, height);
 }
 
+unsigned readTexture(const char* imageFile, int width, int height) {
+	size_t numPixels = static_cast<size_t>(width * height);
+	size_t imageSize = numPixels * 3 * sizeof(unsigned char);
+	unsigned char* imageData = static_cast<unsigned char*>(malloc(imageSize));
+
+	FILE * fp = fopen(imageFile, "r");
+	size_t numRead = fread(imageData, 1, imageSize, fp);
+	assert(!ferror(fp));
+	assert(numRead == numPixels*3);
+	assert(!feof(fp));
+	int c = fgetc(fp);
+	assert(c == EOF);
+	assert(feof(fp));
+
+	fclose(fp);
+
+	unsigned tex;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,  GL_RGB, GL_UNSIGNED_BYTE, imageData); // TODO try other internal format
+	glGenerateMipmap(GL_TEXTURE_2D);
+	free(imageData);
+
+	return tex;
+}
+
 int main() {
 	if (!glfwInit()) {
 		printf("GLFW failed to init!\n");
@@ -31,7 +68,9 @@ int main() {
 	
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	GLFWwindow* window = glfwCreateWindow(800, 600, "Lecture 1", NULL, NULL);
+	int windowWidth = 800;
+	int windowHeight = 600;
+	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Lecture 1", NULL, NULL);
 	glfwSetKeyCallback(window, keyCallback);
 
 	glfwMakeContextCurrent(window);
@@ -48,12 +87,15 @@ int main() {
 
 	const char* vertexShaderSource =
 		"#version 330\n"
-		"layout (location = 0) in vec2 aPos;\n"
+		"layout (location = 0) in vec3 aPos;\n"
 		"layout (location = 1) in vec2 aTextureCoords;\n"
+		"uniform mat4 proj;\n"
+		//"uniform mat4 model;\n"
 		"out vec2 st;\n"
 		"void main() {\n"
+		"	gl_Position = proj * vec4(aPos.x, aPos.y, aPos.z - 3.0, 1.0);\n"
+		//"	gl_Position = proj * vec4(aPos, 1.0);\n"
 		"	st = aTextureCoords;\n"
-		"	gl_Position = vec4(aPos, 0.0, 1.0);\n"
 		"}\n";
 	unsigned vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
@@ -72,10 +114,10 @@ int main() {
 		"#version 330\n"
 		"in vec2 st;\n"
 		"out vec4 FragColor;\n"
-		"uniform sampler2D tex;"
+		"uniform sampler2D tex0;"
+		"uniform sampler2D tex1;"
 		"void main() {\n"
-		"	FragColor = texture(tex, st);\n"
-		"	//FragColor = vec4(st, 0.0, 1.0);\n"
+		"	FragColor = texture(tex1, st);\n"
 		"}\n";
 	unsigned fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
@@ -109,62 +151,75 @@ int main() {
 	glBindVertexArray(vao);
 
 	float points[] = {
-		-0.5f, -0.5f,      // point1
-		0.f, 0.f,          // uv1
-		0.5f, -0.5f,       // point2
-		1.f, 0.f,          // uv2
-		0.0f,  0.5f,       // point3
-		0.5f, 1.f,          // uv3
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
 	};
 
 	unsigned vbo;
 	glGenBuffers(1, &vbo);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(points), points, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
 
-	const int width = 1000;
-	const int height = 663;
-	size_t numPixels = width * height;
-	size_t imageSize = numPixels * 3 * sizeof(unsigned char);
-	unsigned char* imageData = static_cast<unsigned char*>(malloc(imageSize));
+	unsigned tex0 = readTexture("/home/stef/Downloads/brick.rgb", 1000, 663);
 
-	FILE * fp = fopen("/home/stef/Downloads/brick.rgb", "r");
-	size_t numRead = fread(imageData, 1, imageSize, fp);
-	assert(!ferror(fp));
-	assert(numRead == numPixels*3);
-	assert(!feof(fp));
-	int c = fgetc(fp);
-	assert(c == EOF);
-	assert(feof(fp));
+	glBindTexture(GL_TEXTURE_2D, tex0);
+	int tex0Location = glGetUniformLocation(program, "tex0");
+	glUniform1i(tex0Location, 0);
 
-	fclose(fp);
+	unsigned tex1 = readTexture("/home/stef/Downloads/tree.rgb", 3000, 2000);
 
-#if 0
-	for (size_t i = 0; i < imageSize; i += 1) {
-		if (i % 3 == 0) {
-			imageData[i] = 255;
-		} else {
-			imageData[i] = 0;
-		}
-	}
-#endif
+	glBindTexture(GL_TEXTURE_2D, tex1);
+	int tex1Location = glGetUniformLocation(program, "tex1");
+	glUniform1i(tex1Location, 1);
 
-	unsigned tex;
-	glGenTextures(1, &tex);
-	glBindTexture(GL_TEXTURE_2D, tex);
+	float aspect = (float)windowWidth / (float)windowHeight;
+	glm::mat4 proj = glm::perspective(glm::radians(45.f), aspect, 0.01f, 100.f);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,  GL_RGB, GL_UNSIGNED_BYTE, imageData); // TODO try other internal format
-	glGenerateMipmap(GL_TEXTURE_2D);
-	free(imageData);
+	int projLocation = glGetUniformLocation(program, "proj");
+	glUniformMatrix4fv(projLocation, 1, GL_FALSE, glm::value_ptr(proj));
 
 	while (!glfwWindowShouldClose(window)) {
 		glClearColor(1.f, 1.f, 1.f, 1.f);
@@ -173,9 +228,13 @@ int main() {
 
 		glUseProgram(program);
 		glBindVertexArray(vao);
-		glBindTexture(GL_TEXTURE_2D, tex);
 
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, tex0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, tex1);
+
+		glDrawArrays(GL_TRIANGLES, 0, 36);
 		glfwSwapBuffers(window);
 	}
 
