@@ -87,6 +87,74 @@ unsigned readTexture(const char* imageFile, int width, int height) {
 	return tex;
 }
 
+const char* getShaderTypeStr(GLenum type) {
+	if (type == GL_VERTEX_SHADER) {
+		return "vertex";
+	} else if (type == GL_FRAGMENT_SHADER) {
+		return "fragment";
+	} else {
+		return "unknown";
+	}
+}
+
+unsigned readShader(const char* path, GLenum type) {
+	FILE* fp = fopen(path, "r");
+	if (!fp) {
+		printf("Failed to open shader %s.\n", path);
+		return 0;
+	}
+
+	const int bufSize = 4096;
+	char* buf = static_cast<char*>(malloc(bufSize));
+	memset(buf, 0, bufSize);
+
+	fread(buf, 1, bufSize - 1, fp);
+	fclose(fp);
+
+	unsigned shader = glCreateShader(type);
+	glShaderSource(shader, 1, &buf, NULL);
+	glCompileShader(shader);
+
+	int success = 1;
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+	if (!success) {
+		printf("Problem with compilation of %s shader!\n", getShaderTypeStr(type));
+		char info[512];
+		glGetShaderInfoLog(shader, 512, NULL, info);
+		printf("Shader info log: %s\n", info);
+	}
+
+	free(buf);
+	return shader;
+}
+
+unsigned createShaderProgram(unsigned vertexShader, unsigned fragmentShader) {
+	unsigned program = glCreateProgram();
+	glAttachShader(program, vertexShader);
+	glAttachShader(program, fragmentShader);
+	glLinkProgram(program);
+
+	int success = 1;
+	glGetProgramiv(program, GL_LINK_STATUS, &success);
+	if (!success) {
+		printf("Problem with linking of shading program!\n");
+	}
+
+	return program;
+}
+
+void setProgramUni(unsigned program, const glm::mat4& mat, const char* name) {
+	glUseProgram(program);
+	int location = glGetUniformLocation(program, name);
+	glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(mat));
+}
+
+void setProgramUni(unsigned program, const glm::vec3& v, const char* name) {
+	glUseProgram(program);
+	int location = glGetUniformLocation(program, name);
+	glUniform3f(location, v[0], v[1], v[2]);
+}
+
 int main() {
 	if (!glfwInit()) {
 		printf("GLFW failed to init!\n");
@@ -115,67 +183,13 @@ int main() {
 
 	glEnable(GL_DEPTH_TEST);
 
-	// rad = deg / 180 * pi
-	// deg = rad / pi * 180
+	unsigned vertexShader = readShader("src/vert.glsl", GL_VERTEX_SHADER);
+	unsigned fragmentShader = readShader("src/frag.glsl", GL_FRAGMENT_SHADER);
+	// Use a different shader for the light
+	unsigned lightShader = readShader("src/light.glsl", GL_FRAGMENT_SHADER);
 
-	const int shaderBufSize = 4096;
-	char* shaderBuf = static_cast<char*>(malloc(shaderBufSize));
-	memset(shaderBuf, 0, shaderBufSize);
-
-	FILE* shaderFp = fopen("src/vert.glsl", "r");
-	if (!shaderFp) {
-		printf("Failed to open vertex shader.\n");
-		return 1;
-	}
-	fread(shaderBuf, 1, shaderBufSize - 1, shaderFp);
-	fclose(shaderFp);
-
-	unsigned vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertexShader, 1, &shaderBuf, NULL);
-	glCompileShader(vertexShader);
-
-	int success = 0;
-	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		printf("Problem with compilation of vertex shader!\n");
-		char info[512];
-		glGetShaderInfoLog(vertexShader, 512, NULL, info);
-		printf("Shader info log: %s\n", info);
-	}
-
-	shaderFp = fopen("src/frag.glsl", "r");
-	if (!shaderFp) {
-		printf("Failed to open fragment shader.\n");
-		return 1;
-	}
-	fread(shaderBuf, 1, shaderBufSize - 1, shaderFp);
-	fclose(shaderFp);
-
-	unsigned fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragmentShader, 1, &shaderBuf, NULL);
-	glCompileShader(fragmentShader);
-
-	success = 1;
-	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		printf("Problem with compilation of fragment shader!\n");
-		char info[512];
-		glGetShaderInfoLog(fragmentShader, 512, NULL, info);
-		printf("Shader info log: %s\n", info);
-	}
-
-	free(shaderBuf);
-
-	unsigned program = glCreateProgram();
-	glAttachShader(program, vertexShader);
-	glAttachShader(program, fragmentShader);
-	glLinkProgram(program);
-
-	glGetProgramiv(program, GL_LINK_STATUS, &success);
-	if (!success) {
-		printf("Problem with linking of shading program!\n");
-	}
-	glUseProgram(program);
+	unsigned program = createShaderProgram(vertexShader, fragmentShader);
+	unsigned lightProgram = createShaderProgram(vertexShader, lightShader);
 
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
@@ -246,30 +260,11 @@ int main() {
 	int tex0Location = glGetUniformLocation(program, "tex0");
 	glUniform1i(tex0Location, 0);
 
-	unsigned tex1 = readTexture("/home/stef/Downloads/tree.rgb", 3000, 2000);
-
-	glBindTexture(GL_TEXTURE_2D, tex1);
-	int tex1Location = glGetUniformLocation(program, "tex1");
-	glUniform1i(tex1Location, 1);
+	const float cameraSpeed = 3.f;
+	glm::vec3 cameraPos(0.f, 0.f, 3.f);
 
 	float aspect = (float)windowWidth / (float)windowHeight;
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), aspect, 0.01f, 100.f);
-
-	glm::mat4 model = glm::rotate(glm::radians(45.f), glm::vec3(1.f, 1.0f, 1.0f));
-
-	const float cameraSpeed = 3.f;
-
-	glm::vec3 cameraPos(0.f, 0.f, 3.f);
-	glm::mat4 view(1.f);
-
-	int projLocation = glGetUniformLocation(program, "proj");
-	glUniformMatrix4fv(projLocation, 1, GL_FALSE, glm::value_ptr(proj));
-
-	int modelLocation = glGetUniformLocation(program, "model");
-	glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
-
-	int viewLocation = glGetUniformLocation(program, "view");
-	glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
 	double lastTime = glfwGetTime();
 	while (!glfwWindowShouldClose(window)) {
@@ -277,8 +272,6 @@ int main() {
 		float elapsedTime = static_cast<float>(currTime - lastTime);
 		lastTime = currTime;
 
-		glClearColor(1.f, 1.f, 1.f, 1.f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glfwPollEvents();
 
 		glm::mat4 rot = glm::eulerAngleXY(glm::radians(pitch), glm::radians(yaw));
@@ -304,19 +297,36 @@ int main() {
 		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
 			cameraPos += cameraUp * elapsedTime * cameraSpeed;
 		}
-		view = rot * glm::translate(-cameraPos);
-
-		glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
 		glUseProgram(program);
 		glBindVertexArray(vao);
-
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex0);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, tex1);
 
+		glm::mat4 boxModel = glm::rotate(glm::radians(45.f), glm::vec3(1.f, 1.0f, 1.0f));
+		glm::mat4 view = rot * glm::translate(-cameraPos);
+
+		setProgramUni(program, proj, "proj");
+		setProgramUni(program, view, "view");
+		setProgramUni(program, boxModel, "model");
+		setProgramUni(program, glm::vec3(0, 2, 0), "lightPos");
+
+		glClearColor(0.6f, 0.6f, 0.6f, 1.f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glDrawArrays(GL_TRIANGLES, 0, 36);
+
+#if 1
+		// One more time for the light
+		glm::mat4 lightModel = glm::translate(glm::vec3(0, 1.5, 0)) * glm::scale(glm::vec3(0.1, 0.1, 0.1));
+
+		glUseProgram(lightProgram);
+		setProgramUni(lightProgram, proj, "proj");
+		setProgramUni(lightProgram, view, "view");
+		setProgramUni(lightProgram, lightModel, "model");
+		glBindVertexArray(vao);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+#endif
+
 		glfwSwapBuffers(window);
 	}
 
