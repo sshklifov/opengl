@@ -15,6 +15,6 @@ out vec3 normal;
 void main() {
 	vertexPos = vec3(model * vec4(inPos, 1.0));
 	textureCoords = inTextureCoords;
-	normal = vec3(model * vec4(inNormal, 0.0));
+	normal = normalize(vec3(model * vec4(inNormal, 0.0)));
 	gl_Position = proj * view * model * vec4(inPos, 1.0);
 }

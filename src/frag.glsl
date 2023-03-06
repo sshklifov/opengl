@@ -13,12 +13,11 @@ void main() {
 
 	float ambient = 0.1f;
 
-	//vec3 lightPos = vec3(0, 1.5, 0);
 	vec3 lightDir = normalize(lightPos - vertexPos);
 	float cosAngle = dot(normal, lightDir);
 	float diffuse = max(cosAngle, 0);
 
 	vec3 color = vec3(texture(tex0, textureCoords));
-	vec3 res = (diffuse) * color;
+	vec3 res = (ambient + diffuse) * color;
 	FragColor = vec4(res, 1.0);
 }
