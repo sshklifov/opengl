@@ -118,23 +118,20 @@ int main() {
 	// rad = deg / 180 * pi
 	// deg = rad / pi * 180
 
-	const char* vertexShaderSource =
-		"#version 330\n"
-		"layout (location = 0) in vec3 aPos;\n"
-		"layout (location = 1) in vec2 aTextureCoords;\n"
-		"layout (location = 2) in vec3 aNormal;\n"
-		"uniform mat4 proj;\n"
-		"uniform mat4 model;\n"
-		"uniform mat4 view;\n"
-		"out vec2 st;\n"
-		"out vec3 vertexPos;\n"
-		"void main() {\n"
-		"	vertexPos = vec3(model * vec4(aPos, 1.0));\n"
-		"	gl_Position = proj * view * model * vec4(aPos, 1.0);\n"
-		"	st = aTextureCoords;\n"
-		"}\n";
+	const int shaderBufSize = 4096;
+	char* shaderBuf = static_cast<char*>(malloc(shaderBufSize));
+	memset(shaderBuf, 0, shaderBufSize);
+
+	FILE* shaderFp = fopen("src/vert.glsl", "r");
+	if (!shaderFp) {
+		printf("Failed to open vertex shader.\n");
+		return 1;
+	}
+	fread(shaderBuf, 1, shaderBufSize - 1, shaderFp);
+	fclose(shaderFp);
+
 	unsigned vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+	glShaderSource(vertexShader, 1, &shaderBuf, NULL);
 	glCompileShader(vertexShader);
 
 	int success = 0;
@@ -146,25 +143,16 @@ int main() {
 		printf("Shader info log: %s\n", info);
 	}
 
-	const char* fragmentShaderSource =
-		"#version 330\n"
-		"in vec2 st;\n"
-		"out vec4 FragColor;\n"
-		"uniform sampler2D tex0;\n"
-		"uniform sampler2D tex1;\n"
-		"in vec3 vertexPos;\n"
-		"void main() {\n"
-		"	vec3 diffuseColor = vec3(texture(tex0, st));\n"
-		"	float ambientLight = 0.1f;\n"
-		"	vec3 ambientColor = diffuseColor * ambientLight;\n"
-		"	FragColor = vec4(ambientColor, 1.0);\n"
-		"	vec3 lightPos = vec3(0, 2, 0);\n"
-		"	vec3 lightDir = vertexPos - lightPos;\n"
-		"	// vec3 normal = ???;\n"
-		"	FragColor = vec4(diffuseColor, 1.0);\n"
-		"}\n";
+	shaderFp = fopen("src/frag.glsl", "r");
+	if (!shaderFp) {
+		printf("Failed to open fragment shader.\n");
+		return 1;
+	}
+	fread(shaderBuf, 1, shaderBufSize - 1, shaderFp);
+	fclose(shaderFp);
+
 	unsigned fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+	glShaderSource(fragmentShader, 1, &shaderBuf, NULL);
 	glCompileShader(fragmentShader);
 
 	success = 1;
@@ -175,6 +163,8 @@ int main() {
 		glGetShaderInfoLog(fragmentShader, 512, NULL, info);
 		printf("Shader info log: %s\n", info);
 	}
+
+	free(shaderBuf);
 
 	unsigned program = glCreateProgram();
 	glAttachShader(program, vertexShader);
