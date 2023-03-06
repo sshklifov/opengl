@@ -194,10 +194,35 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 				vti[i] -= 1;
 			}
 
+			// First face
 			glm::vec3 v0 = v[(size_t)vi[0]], v1 = v[(size_t)vi[1]], v2 = v[(size_t)vi[2]];
 			glm::vec2 vt0 = vt[(size_t)vti[0]], vt1 = vt[(size_t)vti[1]], vt2 = vt[(size_t)vti[2]];
 			// Calculate normal
 			glm::vec3 n = glm::cross(v1 - v0, v2 - v0);
+
+			bufferData.insert(bufferData.end(), glm::value_ptr(v0), glm::value_ptr(v0) + 3);
+			bufferData.insert(bufferData.end(), glm::value_ptr(vt0), glm::value_ptr(vt0) + 2);
+			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
+
+			bufferData.insert(bufferData.end(), glm::value_ptr(v1), glm::value_ptr(v1) + 3);
+			bufferData.insert(bufferData.end(), glm::value_ptr(vt1), glm::value_ptr(vt1) + 2);
+			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
+
+			bufferData.insert(bufferData.end(), glm::value_ptr(v2), glm::value_ptr(v2) + 3);
+			bufferData.insert(bufferData.end(), glm::value_ptr(vt2), glm::value_ptr(vt2) + 2);
+			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
+
+			++facesCount;
+
+			// Second face
+			v0 = v[(size_t)vi[2]];
+			v1 = v[(size_t)vi[3]];
+			v2 = v[(size_t)vi[0]];
+			vt0 = vt[(size_t)vti[2]];
+			vt1 = vt[(size_t)vti[3]];
+			vt2 = vt[(size_t)vti[0]];
+			// Calculate normal
+			n = glm::cross(v1 - v0, v2 - v0);
 
 			bufferData.insert(bufferData.end(), glm::value_ptr(v0), glm::value_ptr(v0) + 3);
 			bufferData.insert(bufferData.end(), glm::value_ptr(vt0), glm::value_ptr(vt0) + 2);
@@ -285,7 +310,7 @@ int main() {
 	int tex0Location = glGetUniformLocation(program, "tex0");
 	glUniform1i(tex0Location, 0);
 
-	const float cameraSpeed = 40.f;
+	const float cameraSpeed = 70.f;
 	glm::vec3 cameraPos(0.f, 0.f, 3.f);
 
 	float aspect = (float)windowWidth / (float)windowHeight;
@@ -328,7 +353,7 @@ int main() {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex0);
 
-		glm::mat4 boxModel = glm::rotate(glm::radians(45.f), glm::vec3(1.f, 1.0f, 1.0f));
+		glm::mat4 boxModel(1.f);
 		glm::mat4 view = rot * glm::translate(-cameraPos);
 
 		setProgramUni(program, proj, "proj");
