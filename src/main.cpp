@@ -233,7 +233,7 @@ int main() {
 
 	glm::mat4 model = glm::rotate(glm::radians(45.f), glm::vec3(1.f, 1.0f, 1.0f));
 
-	const float cameraSpeed = 0.001f;
+	const float cameraSpeed = 3.f;
 
 	glm::vec3 cameraPos(0.f, 0.f, 3.f);
 	const glm::vec3 cameraCenter(0.0, 0.0, 0.0);
@@ -248,17 +248,35 @@ int main() {
 	int viewLocation = glGetUniformLocation(program, "view");
 	glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
+	double lastTime = glfwGetTime();
 	while (!glfwWindowShouldClose(window)) {
+		double currTime = glfwGetTime();
+		float elapsedTime = static_cast<float>(currTime - lastTime);
+		lastTime = currTime;
+
 		glClearColor(1.f, 1.f, 1.f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glfwPollEvents();
 
-		float t = (float)glfwGetTime();
-		cameraPos.x = 5 * cosf(t);
-		cameraPos.y = 0.0;
-		cameraPos.z = 5 * sinf(t);
-
-		glm::mat4 view = glm::lookAt(cameraPos, cameraCenter, glm::vec3(0.0, 1.0, 0.0));
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+			cameraPos.z -= elapsedTime * cameraSpeed;
+		}
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+			cameraPos.z += elapsedTime * cameraSpeed;
+		}
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+			cameraPos.x -= elapsedTime * cameraSpeed;
+		}
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+			cameraPos.x += elapsedTime * cameraSpeed;
+		}
+		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
+			cameraPos.y -= elapsedTime * cameraSpeed;
+		}
+		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+			cameraPos.y += elapsedTime * cameraSpeed;
+		}
+		view = glm::translate(-cameraPos);
 		glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
 		glUseProgram(program);
