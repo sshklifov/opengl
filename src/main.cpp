@@ -310,6 +310,7 @@ int main() {
 		setProgramUni(program, view, "view");
 		setProgramUni(program, boxModel, "model");
 		setProgramUni(program, glm::vec3(0, 2, 0), "lightPos");
+		setProgramUni(program, cameraPos, "cameraPos");
 
 		glClearColor(0.6f, 0.6f, 0.6f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
