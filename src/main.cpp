@@ -32,7 +32,7 @@ float pitch = 0.f;
 float xlast = NAN;
 float ylast = NAN;
 static void mouseCallback(GLFWwindow* window, double xarg, double yarg) {
-	const float sensitivity = 0.5f;
+	const float sensitivity = 0.2f;
 	const bool invertY = false;
 
 	float xpos = static_cast<float>(xarg);
