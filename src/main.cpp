@@ -11,6 +11,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
 
 static void errorCallback(int error, const char* msg) {
 	printf("GLFW library error %d: %s\n", error, msg);
@@ -24,6 +25,34 @@ static void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
 
 static void resizeCallback(GLFWwindow* window, int width, int height) {
 	glViewport(0, 0, width, height);
+}
+
+float yaw = 0.f;
+float pitch = 0.f;
+float xlast = NAN;
+float ylast = NAN;
+static void mouseCallback(GLFWwindow* window, double xarg, double yarg) {
+	const float sensitivity = 0.5f;
+	const bool invertY = false;
+
+	float xpos = static_cast<float>(xarg);
+	float ypos = static_cast<float>(yarg);
+	if (glm::isnan(xlast)) {
+		xlast = xpos;
+		ylast = ypos;
+		return;
+	}
+
+	float xoff = xpos - xlast;
+	float yoff = ypos - ylast;
+	xlast = xpos;
+	ylast = ypos;
+
+	yaw += xoff * sensitivity;
+	const float yinvert = invertY ? -1.f : 1.f;
+	pitch += yinvert * yoff * sensitivity;
+	// Avoid gimbal lock
+	pitch = glm::clamp(pitch, -89.f, 89.f);
 }
 
 unsigned readTexture(const char* imageFile, int width, int height) {
@@ -71,6 +100,8 @@ int main() {
 	int windowWidth = 800;
 	int windowHeight = 600;
 	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Lecture 1", NULL, NULL);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetCursorPosCallback(window, mouseCallback);  
 	glfwSetKeyCallback(window, keyCallback);
 
 	glfwMakeContextCurrent(window);
@@ -236,7 +267,6 @@ int main() {
 	const float cameraSpeed = 3.f;
 
 	glm::vec3 cameraPos(0.f, 0.f, 3.f);
-	const glm::vec3 cameraCenter(0.0, 0.0, 0.0);
 	glm::mat4 view(1.f);
 
 	int projLocation = glGetUniformLocation(program, "proj");
@@ -258,25 +288,31 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glfwPollEvents();
 
+		glm::mat4 rot = glm::eulerAngleXY(glm::radians(pitch), glm::radians(yaw));
+		glm::vec3 cameraRight(rot[0][0], rot[1][0], rot[2][0]);
+		glm::vec3 cameraUp(rot[0][1], rot[1][1], rot[2][1]);
+		glm::vec3 cameraForward(rot[0][2], rot[1][2], rot[2][2]);
+
 		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-			cameraPos.z -= elapsedTime * cameraSpeed;
+			cameraPos -= cameraForward * elapsedTime * cameraSpeed;
 		}
 		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-			cameraPos.z += elapsedTime * cameraSpeed;
+			cameraPos += cameraForward * elapsedTime * cameraSpeed;
 		}
 		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-			cameraPos.x -= elapsedTime * cameraSpeed;
+			cameraPos -= cameraRight * elapsedTime * cameraSpeed;
 		}
 		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-			cameraPos.x += elapsedTime * cameraSpeed;
+			cameraPos += cameraRight * elapsedTime * cameraSpeed;
 		}
 		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
-			cameraPos.y -= elapsedTime * cameraSpeed;
+			cameraPos -= cameraUp * elapsedTime * cameraSpeed;
 		}
 		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-			cameraPos.y += elapsedTime * cameraSpeed;
+			cameraPos += cameraUp * elapsedTime * cameraSpeed;
 		}
-		view = glm::translate(-cameraPos);
+		view = rot * glm::translate(-cameraPos);
+
 		glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
 		glUseProgram(program);
