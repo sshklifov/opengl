@@ -82,6 +82,8 @@ int main() {
 	glViewport(0, 0, 800, 600);
 	glfwSetFramebufferSizeCallback(window, resizeCallback);
 
+	glEnable(GL_DEPTH_TEST);
+
 	// rad = deg / 180 * pi
 	// deg = rad / pi * 180
 
@@ -89,12 +91,15 @@ int main() {
 		"#version 330\n"
 		"layout (location = 0) in vec3 aPos;\n"
 		"layout (location = 1) in vec2 aTextureCoords;\n"
+		"layout (location = 2) in vec3 aNormal;\n"
 		"uniform mat4 proj;\n"
-		//"uniform mat4 model;\n"
+		"uniform mat4 model;\n"
+		"uniform mat4 view;\n"
 		"out vec2 st;\n"
+		"out vec3 vertexPos;\n"
 		"void main() {\n"
-		"	gl_Position = proj * vec4(aPos.x, aPos.y, aPos.z - 3.0, 1.0);\n"
-		//"	gl_Position = proj * vec4(aPos, 1.0);\n"
+		"	vertexPos = vec3(model * vec4(aPos, 1.0));\n"
+		"	gl_Position = proj * view * model * vec4(aPos, 1.0);\n"
 		"	st = aTextureCoords;\n"
 		"}\n";
 	unsigned vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -114,10 +119,18 @@ int main() {
 		"#version 330\n"
 		"in vec2 st;\n"
 		"out vec4 FragColor;\n"
-		"uniform sampler2D tex0;"
-		"uniform sampler2D tex1;"
+		"uniform sampler2D tex0;\n"
+		"uniform sampler2D tex1;\n"
+		"in vec3 vertexPos;\n"
 		"void main() {\n"
-		"	FragColor = texture(tex1, st);\n"
+		"	vec3 diffuseColor = vec3(texture(tex0, st));\n"
+		"	float ambientLight = 0.1f;\n"
+		"	vec3 ambientColor = diffuseColor * ambientLight;\n"
+		"	FragColor = vec4(ambientColor, 1.0);\n"
+		"	vec3 lightPos = vec3(0, 2, 0);\n"
+		"	vec3 lightDir = vertexPos - lightPos;\n"
+		"	// vec3 normal = ???;\n"
+		"	FragColor = vec4(diffuseColor, 1.0);\n"
 		"}\n";
 	unsigned fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
@@ -198,12 +211,12 @@ int main() {
 	glGenBuffers(1, &vbo);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(points), points, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
 
-	unsigned tex0 = readTexture("/home/stef/Downloads/brick.rgb", 1000, 663);
+	unsigned tex0 = readTexture("/home/stef/Downloads/box.rgb", 512, 512);
 
 	glBindTexture(GL_TEXTURE_2D, tex0);
 	int tex0Location = glGetUniformLocation(program, "tex0");
@@ -218,13 +231,35 @@ int main() {
 	float aspect = (float)windowWidth / (float)windowHeight;
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), aspect, 0.01f, 100.f);
 
+	glm::mat4 model = glm::rotate(glm::radians(45.f), glm::vec3(1.f, 1.0f, 1.0f));
+
+	const float cameraSpeed = 0.001f;
+
+	glm::vec3 cameraPos(0.f, 0.f, 3.f);
+	const glm::vec3 cameraCenter(0.0, 0.0, 0.0);
+	glm::mat4 view(1.f);
+
 	int projLocation = glGetUniformLocation(program, "proj");
 	glUniformMatrix4fv(projLocation, 1, GL_FALSE, glm::value_ptr(proj));
 
+	int modelLocation = glGetUniformLocation(program, "model");
+	glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
+
+	int viewLocation = glGetUniformLocation(program, "view");
+	glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
+
 	while (!glfwWindowShouldClose(window)) {
 		glClearColor(1.f, 1.f, 1.f, 1.f);
-		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glfwPollEvents();
+
+		float t = (float)glfwGetTime();
+		cameraPos.x = 5 * cosf(t);
+		cameraPos.y = 0.0;
+		cameraPos.z = 5 * sinf(t);
+
+		glm::mat4 view = glm::lookAt(cameraPos, cameraCenter, glm::vec3(0.0, 1.0, 0.0));
+		glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
 		glUseProgram(program);
 		glBindVertexArray(vao);
