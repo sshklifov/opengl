@@ -1,0 +1,7 @@
+{
+    "name": "OpenGL Window",
+    //"type": "cppdbg",
+    "request": "launch",
+    "program": "${workspaceFolder}/windows",
+    "cwd": "${workspaceFolder}"
+  }
