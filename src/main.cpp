@@ -169,6 +169,7 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 
 	std::vector<glm::vec3> v;
 	std::vector<glm::vec2> vt;
+	std::vector<glm::vec3> vn;
 
 	std::vector<float> bufferData;
 	facesCount = 0;
@@ -176,67 +177,64 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 		if (buf[0] == 'v') {
 			if (buf[1] == 't') {
 				glm::vec2 uv;
-				sscanf(buf + 1, "%f %f", &uv.x, &uv.y);
+				sscanf(buf + 2, "%f %f", &uv.x, &uv.y);
 				vt.push_back(uv);
+			} else if (buf[1] == 'n') {
+				glm::vec3 normal;
+				sscanf(buf + 2, "%f %f %f", &normal.x, &normal.y, &normal.z);
+				vn.push_back(normal);
 			} else if (buf[1] == ' ') {
 				glm::vec3 point;
 				sscanf(buf + 1, "%f %f %f", &point.x, &point.y, &point.z);
 				v.push_back(point);
 			}
 		} else if (buf[0] == 'f') {
-			int vi[4];
-			int vti[4];
-			sscanf(buf + 1, "%d/%d %d/%d %d/%d %d/%d",
-				&vi[0], &vti[0], &vi[1], &vti[1], &vi[2], &vti[2], &vi[3], &vti[3]);
+			int vi[4] = {0, };
+			int vti[4] = {0, };
+			int vni[4] = {0, };
+			bool hasNormals = !vn.empty();
+			bool quads = false;
+			if (hasNormals) {
+				int numRead = sscanf(buf + 1, "%d/%d/%d %d/%d/%d %d/%d/%d %d/%d/%d",
+					&vi[0], &vti[0], &vni[0], &vi[1], &vti[1], &vni[1], &vi[2], &vti[2], &vni[2], &vi[3], &vti[3], &vni[3]);
+				quads = (numRead == 12);
+			} else {
+				int numRead = sscanf(buf + 1, "%d/%d %d/%d %d/%d %d/%d",
+					&vi[0], &vti[0], &vi[1], &vti[1], &vi[2], &vti[2], &vi[3], &vti[3]);
+				quads = (numRead == 8);
+			}
 
 			for (int i = 0; i < 4; ++i) {
 				vi[i] -= 1;
 				vti[i] -= 1;
+				vni[i] -= 1;
 			}
 
-			// First face
-			glm::vec3 v0 = v[(size_t)vi[0]], v1 = v[(size_t)vi[1]], v2 = v[(size_t)vi[2]];
-			glm::vec2 vt0 = vt[(size_t)vti[0]], vt1 = vt[(size_t)vti[1]], vt2 = vt[(size_t)vti[2]];
-			// Calculate normal
-			glm::vec3 n = glm::cross(v1 - v0, v2 - v0);
+			int pointIndices[] = {0, 1, 2, 2, 3, 0};
+			int totalPoints = (quads ? 6 : 3);
+			for (int i = 0; i < totalPoints; ++i) {
+				int pointIndex = pointIndices[i];
+				float* pointPtr = glm::value_ptr(v[(size_t)vi[pointIndex]]);
+				float* texturePtr = glm::value_ptr(vt[(size_t)vti[pointIndex]]);
+				bufferData.insert(bufferData.end(), pointPtr, pointPtr + 3);
+				bufferData.insert(bufferData.end(), texturePtr, texturePtr + 2);
 
-			bufferData.insert(bufferData.end(), glm::value_ptr(v0), glm::value_ptr(v0) + 3);
-			bufferData.insert(bufferData.end(), glm::value_ptr(vt0), glm::value_ptr(vt0) + 2);
-			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
+				assert(hasNormals);
+				if (hasNormals) {
+					float* normPtr = glm::value_ptr(vn[(size_t)vni[pointIndex]]);
+					bufferData.insert(bufferData.end(), normPtr, normPtr + 3);
+				} else {
+					// Calculate normal (TODO)
+					// glm::vec3 n = glm::cross(v1 - v0, v2 - v0);
+				}
 
-			bufferData.insert(bufferData.end(), glm::value_ptr(v1), glm::value_ptr(v1) + 3);
-			bufferData.insert(bufferData.end(), glm::value_ptr(vt1), glm::value_ptr(vt1) + 2);
-			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
+			}
 
-			bufferData.insert(bufferData.end(), glm::value_ptr(v2), glm::value_ptr(v2) + 3);
-			bufferData.insert(bufferData.end(), glm::value_ptr(vt2), glm::value_ptr(vt2) + 2);
-			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
-
-			++facesCount;
-
-			// Second face
-			v0 = v[(size_t)vi[2]];
-			v1 = v[(size_t)vi[3]];
-			v2 = v[(size_t)vi[0]];
-			vt0 = vt[(size_t)vti[2]];
-			vt1 = vt[(size_t)vti[3]];
-			vt2 = vt[(size_t)vti[0]];
-			// Calculate normal
-			n = glm::cross(v1 - v0, v2 - v0);
-
-			bufferData.insert(bufferData.end(), glm::value_ptr(v0), glm::value_ptr(v0) + 3);
-			bufferData.insert(bufferData.end(), glm::value_ptr(vt0), glm::value_ptr(vt0) + 2);
-			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
-
-			bufferData.insert(bufferData.end(), glm::value_ptr(v1), glm::value_ptr(v1) + 3);
-			bufferData.insert(bufferData.end(), glm::value_ptr(vt1), glm::value_ptr(vt1) + 2);
-			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
-
-			bufferData.insert(bufferData.end(), glm::value_ptr(v2), glm::value_ptr(v2) + 3);
-			bufferData.insert(bufferData.end(), glm::value_ptr(vt2), glm::value_ptr(vt2) + 2);
-			bufferData.insert(bufferData.end(), glm::value_ptr(n), glm::value_ptr(n) + 3);
-
-			++facesCount;
+			if (quads) {
+				facesCount += 2;
+			} else {
+				facesCount += 1;
+			}
 		}
 	}
 	free(buf);
@@ -302,7 +300,7 @@ int main() {
 	glDeleteShader(fragmentShader);
 
 	int facesCount = 0;
-	unsigned vao = readObjectFile("/home/stef/Downloads/Dragon.obj", facesCount);
+	unsigned vao = readObjectFile("/home/stef/Downloads/sphere.obj", facesCount);
 
 	unsigned tex0 = readTexture("/home/stef/Downloads/box.rgb", 512, 512);
 
@@ -314,7 +312,7 @@ int main() {
 	glm::vec3 cameraPos(0.f, 0.f, 3.f);
 
 	float aspect = (float)windowWidth / (float)windowHeight;
-	glm::mat4 proj = glm::perspective(glm::radians(45.f), aspect, 0.01f, 1000.f);
+	glm::mat4 proj = glm::perspective(glm::radians(45.f), aspect, 10.f, 500.f);
 
 	double lastTime = glfwGetTime();
 	while (!glfwWindowShouldClose(window)) {
@@ -353,12 +351,12 @@ int main() {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex0);
 
-		glm::mat4 boxModel(1.f);
+		glm::mat4 model = glm::scale(glm::vec3(10, 10, 10));
 		glm::mat4 view = rot * glm::translate(-cameraPos);
 
 		setProgramUni(program, proj, "proj");
 		setProgramUni(program, view, "view");
-		setProgramUni(program, boxModel, "model");
+		setProgramUni(program, model, "model");
 		setProgramUni(program, normalize(glm::vec3(1, 1, 1)), "lightDir");
 		setProgramUni(program, cameraPos, "cameraPos");
 
