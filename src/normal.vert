@@ -15,7 +15,7 @@ out vec3 normal;
 void main() {
 	vec3 geomNormal = mat3(model) * inNormal;
 	vec3 shadeNormal = vec3(texture(normalMap, inTexCoords));
-	normal = geomNormal;
+	normal = shadeNormal;
 
 	gl_Position = model * vec4(inPos, 1.0);
 }
