@@ -25,7 +25,7 @@ void main() {
 	vec3 ambient = ambientStrength * materialAmbient;
 
 	//vec3 shadeNormal = normalize(texture(normalMap, textureCoords).xyz * 2 - 1);
-	vec3 shadeNormal = normal;
+	vec3 shadeNormal = normalize(normal);
 
 	vec3 lightDir = normalize(lightPos - vertexPos);
 	float cosLightAngle = dot(shadeNormal, lightDir);

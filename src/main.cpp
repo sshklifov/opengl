@@ -130,10 +130,11 @@ unsigned readShader(const char* path, GLenum type) {
 	return shader;
 }
 
-unsigned createShaderProgram(unsigned vertexShader, unsigned fragmentShader) {
+unsigned createShaderProgram(std::initializer_list<unsigned> shaders) {
 	unsigned program = glCreateProgram();
-	glAttachShader(program, vertexShader);
-	glAttachShader(program, fragmentShader);
+	for (unsigned shader : shaders) {
+		glAttachShader(program, shader);
+	}
 	glLinkProgram(program);
 
 	int success = 1;
@@ -212,8 +213,17 @@ glm::vec3 calculateBitangent(
 	return bitangent;
 }
 
+void appendToVertexBuffer(std::vector<float>& buffer, glm::vec2 v) {
+	float* ptr = glm::value_ptr(v);
+	buffer.insert(buffer.end(), ptr, ptr + 2);
+}
 
-unsigned readObjectFile(const char* path, int& facesCount) {
+void appendToVertexBuffer(std::vector<float>& buffer, glm::vec3 v) {
+	float* ptr = glm::value_ptr(v);
+	buffer.insert(buffer.end(), ptr, ptr + 3);
+}
+
+unsigned readObjectFile(const char* path, int normalsMode, int& renderCount) {
 	FILE* fp = fopen(path, "r");
 	if (!fp) {
 		printf("Failed to open asset %s.\n", path);
@@ -228,7 +238,7 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 	std::vector<glm::vec3> vn;
 
 	std::vector<float> bufferData;
-	facesCount = 0;
+	renderCount = 0;
 	while(fgets(buf, 4096, fp)) {
 		if (buf[0] == 'v') {
 			if (buf[1] == 't') {
@@ -265,40 +275,51 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 				vni[i] -= 1;
 			}
 
-			int pointIndices[] = {0, 1, 2, 2, 3, 0};
-			int totalPoints = (quads ? 6 : 3);
-			for (int i = 0; i < totalPoints; ++i) {
-				int pointIndex = pointIndices[i];
-				// Get all point indices of the current primitive.
-				int primOffset = i - i % 3;
-				int p1 = pointIndices[primOffset], p2 = pointIndices[primOffset + 1], p3 = pointIndices[primOffset] + 2;
-				// Get the position in 3D space + texture coordinates of the triangle.
+			int numTri = quads ? 2 : 1;
+			for (int trid = 0; trid < numTri; ++trid) {
+				// Offset into vi/vti/vni arrays for current triangle
+				int off = 2 * trid;
+				// Positions in 3D space + texture coordinates of the triangle.
 				// This information is required for tangent space matrix calculation.
-				glm::vec3 pos1 = v[(size_t)vi[p1]], pos2 = v[(size_t)vi[p2]], pos3 = v[(size_t)vi[p3]];
-				glm::vec2 uv1 = vt[(size_t)vti[p1]], uv2 = vt[(size_t)vti[p2]], uv3 = vt[(size_t)vti[p3]];
-				// Keep the normal for this point only. Might need to calcualte if not in the objfile.
-				glm::vec3 n = hasNormals ? vn[(size_t)vni[pointIndex]] : calculateNormal(pos1, pos2, pos3);
-
-				float* pointPtr = glm::value_ptr(v[(size_t)vi[pointIndex]]);
-				float* texturePtr = glm::value_ptr(vt[(size_t)vti[pointIndex]]);
-				float* normPtr = glm::value_ptr(n);
-				bufferData.insert(bufferData.end(), pointPtr, pointPtr + 3);
-				bufferData.insert(bufferData.end(), texturePtr, texturePtr + 2);
-				bufferData.insert(bufferData.end(), normPtr, normPtr + 3);
-
+				glm::vec3 pos1 = v[vi[off]], pos2 = v[vi[1+off]], pos3 = v[vi[(2+off)%3]];
+				glm::vec2 uv1 = vt[vti[off]], uv2 = vt[vti[1+off]], uv3 = vt[vti[(2+off)%3]];
+				// Calculate tangent and bitangent vectors
 				glm::vec3 tangent = calculateTangent(pos1, pos2, pos3, uv1, uv2, uv3);
-				float* tangentPtr = glm::value_ptr(tangent);
-				bufferData.insert(bufferData.end(), tangentPtr, tangentPtr + 3);
 				glm::vec3 bitangent = calculateBitangent(pos1, pos2, pos3, uv1, uv2, uv3);
-				float* bitangentPtr = glm::value_ptr(bitangent);
-				bufferData.insert(bufferData.end(), bitangentPtr, bitangentPtr + 3);
+				if (normalsMode) {
+					// Write a single arrow for this triangle
+					const float oneThird = 1.f / 3.f;
+					glm::vec3 point = (pos1 + pos2 + pos3) * oneThird;
+					glm::vec2 uv = (uv1 + uv2 + uv3) * oneThird;
+					glm::vec3 n(0.f, 0.f, 0.f);
+					if (hasNormals) {
+						glm::vec3 n1 = vn[vni[off]], n2 = vn[vni[1+off]], n3 = vn[vni[(2+off)%3]];
+						n = normalize((n1 + n2 + n3) * oneThird);
+					} else {
+						n = calculateNormal(pos1, pos2, pos3); // TODO bug fix
+					}
+					appendToVertexBuffer(bufferData, point);
+					appendToVertexBuffer(bufferData, uv);
+					appendToVertexBuffer(bufferData, n);
+				} else {
+					for (int pid = 0; pid < 3; ++pid) {
+						// Current index into vi/vti/vni arrays
+						int pointIndex = (pid + trid) % 3;
+						// Calculate normal
+						glm::vec3 n = hasNormals ? vn[vni[pointIndex]] : calculateNormal(pos1, pos2, pos3);
+						n = glm::normalize(n);
+
+						appendToVertexBuffer(bufferData, v[vi[pointIndex]]);
+						appendToVertexBuffer(bufferData, vt[vti[pointIndex]]);
+						appendToVertexBuffer(bufferData, n);
+						appendToVertexBuffer(bufferData, tangent);
+						appendToVertexBuffer(bufferData, bitangent);
+					}
+				}
 			}
 
-			if (quads) {
-				facesCount += 2;
-			} else {
-				facesCount += 1;
-			}
+			int renderCountPerTri = normalsMode ? 1 : 3;
+			renderCount += renderCountPerTri * numTri;
 		}
 	}
 	free(buf);
@@ -313,16 +334,27 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 	int bufferSize = static_cast<int>(bufferData.size() * sizeof(float));
 	glBufferData(GL_ARRAY_BUFFER, bufferSize, bufferData.data(), GL_STATIC_DRAW);
 
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), 0);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(5 * sizeof(float)));
-	glEnableVertexAttribArray(2);
-	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(8 * sizeof(float)));
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(11 * sizeof(float)));
-	glEnableVertexAttribArray(4);
+	if (normalsMode) {
+		// Skip tangent and bitangent for now
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(5 * sizeof(float)));
+		glEnableVertexAttribArray(2);
+	} else {
+		// Points, uv coordinates, normals, tangent, bitangent.
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), 0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(5 * sizeof(float)));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(8 * sizeof(float)));
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(11 * sizeof(float)));
+		glEnableVertexAttribArray(4);
+	}
 
 	return vao;
 }
@@ -362,11 +394,12 @@ int main() {
 	unsigned lightFragShader = readShader("src/light.frag", GL_FRAGMENT_SHADER);
 	// Shading program to display normals
 	unsigned normalVertShader = readShader("src/normal.vert", GL_VERTEX_SHADER);
+	unsigned normalGeomShader = readShader("src/normal.geom", GL_GEOMETRY_SHADER);
 	unsigned normalFragShader = readShader("src/normal.frag", GL_FRAGMENT_SHADER);
 
-	unsigned program = createShaderProgram(vertexShader, fragmentShader);
-	unsigned lightProgram = createShaderProgram(lightVertShader, lightFragShader);
-	unsigned normalProgram = createShaderProgram(normalVertShader, normalFragShader);
+	unsigned program = createShaderProgram({vertexShader, fragmentShader});
+	unsigned lightProgram = createShaderProgram({lightVertShader, lightFragShader});
+	unsigned normalProgram = createShaderProgram({normalVertShader, normalGeomShader, normalFragShader});
 
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
@@ -375,8 +408,10 @@ int main() {
 	glDeleteShader(normalVertShader);
 	glDeleteShader(normalFragShader);
 
-	int facesCount = 0;
-	unsigned vao = readObjectFile("/home/stef/Downloads/CubeManual.obj", facesCount);
+	int renderCountTri = 0;
+	unsigned vao = readObjectFile("/home/stef/Downloads/CubeManual.obj", false, renderCountTri);
+	int renderCountNormals = 0;
+	unsigned normalVao = readObjectFile("/home/stef/Downloads/CubeManual.obj", true, renderCountNormals);
 
 	unsigned diffuseTex = readTexture("/home/stef/Downloads/box_diffuse.rgb", 500, 500);
 	unsigned specularTex = readTexture("/home/stef/Downloads/box_specular.rgb", 500, 500);
@@ -420,14 +455,17 @@ int main() {
 		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
 			cameraPos += cameraUp * elapsedTime * cameraSpeed;
 		}
+		// lightPos = cameraPos;
 
 		float rotAngle = 45.f;
-		glm::mat4 model = glm::rotate(glm::radians(rotAngle), glm::vec3(1, 1, 1));
+		/* glm::mat4 model = glm::rotate(glm::radians(rotAngle), glm::vec3(1, 1, 1)); */
+		glm::mat4 model(1.f);
 		glm::mat4 view = rot * glm::translate(-cameraPos);
 
 		glClearColor(0.6f, 0.6f, 0.6f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+#if 1
 		glUseProgram(lightProgram);
 		glBindVertexArray(vao);
 
@@ -439,7 +477,7 @@ int main() {
 		setProgramTexture(program, diffuseTex, 0, "diffuseMap");
 		setProgramTexture(program, specularTex, 1, "specularMap");
 		setProgramTexture(program, normalTex, 2, "normalMap");
-		glDrawArrays(GL_TRIANGLES, 0, facesCount * 3);
+		glDrawArrays(GL_TRIANGLES, 0, renderCountTri);
 
 		// One more time for the light
 		glm::mat4 lightModel = glm::translate(lightPos) * glm::scale(glm::vec3(0.1, 0.1, 0.1));
@@ -449,7 +487,18 @@ int main() {
 		setProgramUniform(lightProgram, view, "view");
 		setProgramUniform(lightProgram, lightModel, "model");
 		glDrawArrays(GL_TRIANGLES, 0, 36);
+#endif
 
+#if 1
+		// One more time for the normals
+		glUseProgram(normalProgram);
+		glBindVertexArray(normalVao);
+		setProgramUniform(normalProgram, proj, "proj");
+		setProgramUniform(normalProgram, view, "view");
+		setProgramUniform(normalProgram, model, "model");
+		setProgramTexture(normalProgram, normalTex, 0, "normalMap");
+		glDrawArrays(GL_POINTS, 0, renderCountNormals);
+#endif
 
 		glfwSwapBuffers(window);
 	}
