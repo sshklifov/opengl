@@ -166,6 +166,52 @@ void setProgramTexture(unsigned program, unsigned tex, int slot, const char* nam
 	glUniform1i(location, slot);
 }
 
+glm::vec3 calculateNormal(const glm::vec3& pos1, const glm::vec3& pos2, const glm::vec3& pos3) {
+	return glm::cross(pos2 - pos1, pos3 - pos2);
+}
+
+glm::vec3 calculateTangent(
+	const glm::vec3 pos1,
+	const glm::vec3 pos2,
+	const glm::vec3 pos3,
+	const glm::vec2 uv1,
+	const glm::vec2 uv2,
+	const glm::vec2 uv3
+) {
+	glm::vec3 edge1 = pos2 - pos1;
+	glm::vec3 edge2 = pos3 - pos1;
+	glm::vec2 deltaUV1 = uv2 - uv1;
+	glm::vec2 deltaUV2 = uv3 - uv1; 
+	float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+	glm::vec3 tangent;
+	tangent.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+	tangent.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+	tangent.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+	return tangent;
+}
+
+glm::vec3 calculateBitangent(
+	const glm::vec3 pos1,
+	const glm::vec3 pos2,
+	const glm::vec3 pos3,
+	const glm::vec2 uv1,
+	const glm::vec2 uv2,
+	const glm::vec2 uv3
+) {
+	glm::vec3 edge1 = pos2 - pos1;
+	glm::vec3 edge2 = pos3 - pos1;
+	glm::vec2 deltaUV1 = uv2 - uv1;
+	glm::vec2 deltaUV2 = uv3 - uv1; 
+	float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+	glm::vec3 bitangent;
+	bitangent.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+	bitangent.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+	bitangent.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+	return bitangent;
+}
+
 
 unsigned readObjectFile(const char* path, int& facesCount) {
 	FILE* fp = fopen(path, "r");
@@ -199,71 +245,52 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 				v.push_back(point);
 			}
 		} else if (buf[0] == 'f') {
-			int vi[4] = {0, };
-			int vti[4] = {0, };
-			int vni[4] = {0, };
+			size_t vi[4] = {0, };
+			size_t vti[4] = {0, };
+			size_t vni[4] = {0, };
 			bool hasNormals = !vn.empty();
 			bool quads = false;
 			if (hasNormals) {
-				int numRead = sscanf(buf + 1, "%d/%d/%d %d/%d/%d %d/%d/%d %d/%d/%d",
+				int numRead = sscanf(buf + 1, "%lu/%lu/%lu %lu/%lu/%lu %lu/%lu/%lu %lu/%lu/%lu",
 					&vi[0], &vti[0], &vni[0], &vi[1], &vti[1], &vni[1], &vi[2], &vti[2], &vni[2], &vi[3], &vti[3], &vni[3]);
 				quads = (numRead == 12);
 			} else {
-				int numRead = sscanf(buf + 1, "%d/%d %d/%d %d/%d %d/%d",
+				int numRead = sscanf(buf + 1, "%lu/%lu %lu/%lu %lu/%lu %lu/%lu",
 					&vi[0], &vti[0], &vi[1], &vti[1], &vi[2], &vti[2], &vi[3], &vti[3]);
 				quads = (numRead == 8);
 			}
-
 			for (int i = 0; i < 4; ++i) {
 				vi[i] -= 1;
 				vti[i] -= 1;
 				vni[i] -= 1;
 			}
 
-			glm::vec3 pos1 = v[(size_t)vi[0]], pos2 = v[(size_t)vi[1]], pos3 = v[(size_t)vi[2]];
-			glm::vec3 n(0.f);
-			if (!hasNormals) {
-				n = glm::cross(pos2 - pos1, pos3 - pos2);
-			}
-			glm::vec2 uv1 = vt[(size_t)vti[0]], uv2 = vt[(size_t)vti[1]], uv3 = vt[(size_t)vti[2]];
-
-			glm::vec3 tangent1;
-			glm::vec3 bitangent1;
-
-			glm::vec3 edge1 = pos2 - pos1;
-			glm::vec3 edge2 = pos3 - pos1;
-			glm::vec2 deltaUV1 = uv2 - uv1;
-			glm::vec2 deltaUV2 = uv3 - uv1; 
-
-			float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-			tangent1.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
-			tangent1.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
-			tangent1.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
-			bitangent1.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
-			bitangent1.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
-			bitangent1.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
-
-			assert(quads == false);
 			int pointIndices[] = {0, 1, 2, 2, 3, 0};
 			int totalPoints = (quads ? 6 : 3);
 			for (int i = 0; i < totalPoints; ++i) {
 				int pointIndex = pointIndices[i];
+				// Get all point indices of the current primitive.
+				int primOffset = i - i % 3;
+				int p1 = pointIndices[primOffset], p2 = pointIndices[primOffset + 1], p3 = pointIndices[primOffset] + 2;
+				// Get the position in 3D space + texture coordinates of the triangle.
+				// This information is required for tangent space matrix calculation.
+				glm::vec3 pos1 = v[(size_t)vi[p1]], pos2 = v[(size_t)vi[p2]], pos3 = v[(size_t)vi[p3]];
+				glm::vec2 uv1 = vt[(size_t)vti[p1]], uv2 = vt[(size_t)vti[p2]], uv3 = vt[(size_t)vti[p3]];
+				// Keep the normal for this point only. Might need to calcualte if not in the objfile.
+				glm::vec3 n = hasNormals ? vn[(size_t)vni[pointIndex]] : calculateNormal(pos1, pos2, pos3);
+
 				float* pointPtr = glm::value_ptr(v[(size_t)vi[pointIndex]]);
 				float* texturePtr = glm::value_ptr(vt[(size_t)vti[pointIndex]]);
+				float* normPtr = glm::value_ptr(n);
 				bufferData.insert(bufferData.end(), pointPtr, pointPtr + 3);
 				bufferData.insert(bufferData.end(), texturePtr, texturePtr + 2);
+				bufferData.insert(bufferData.end(), normPtr, normPtr + 3);
 
-				if (hasNormals) {
-					float* normPtr = glm::value_ptr(vn[(size_t)vni[pointIndex]]);
-					bufferData.insert(bufferData.end(), normPtr, normPtr + 3);
-				} else {
-					float* normPtr = glm::value_ptr(n);
-					bufferData.insert(bufferData.end(), normPtr, normPtr + 3);
-				}
-
-				float* tangentPtr = glm::value_ptr(tangent1);
+				glm::vec3 tangent = calculateTangent(pos1, pos2, pos3, uv1, uv2, uv3);
+				float* tangentPtr = glm::value_ptr(tangent);
 				bufferData.insert(bufferData.end(), tangentPtr, tangentPtr + 3);
-				float* bitangentPtr = glm::value_ptr(bitangent1);
+				glm::vec3 bitangent = calculateBitangent(pos1, pos2, pos3, uv1, uv2, uv3);
+				float* bitangentPtr = glm::value_ptr(bitangent);
 				bufferData.insert(bufferData.end(), bitangentPtr, bitangentPtr + 3);
 			}
 
@@ -285,7 +312,6 @@ unsigned readObjectFile(const char* path, int& facesCount) {
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	int bufferSize = static_cast<int>(bufferData.size() * sizeof(float));
 	glBufferData(GL_ARRAY_BUFFER, bufferSize, bufferData.data(), GL_STATIC_DRAW);
-
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), 0);
 	glEnableVertexAttribArray(0);
@@ -331,21 +357,30 @@ int main() {
 
 	unsigned vertexShader = readShader("src/vert.glsl", GL_VERTEX_SHADER);
 	unsigned fragmentShader = readShader("src/frag.glsl", GL_FRAGMENT_SHADER);
-	// Use a different shader for the light
-	unsigned lightShader = readShader("src/light.glsl", GL_FRAGMENT_SHADER);
+	// Shading program for the box light
+	unsigned lightVertShader = readShader("src/light.vert", GL_VERTEX_SHADER);
+	unsigned lightFragShader = readShader("src/light.frag", GL_FRAGMENT_SHADER);
+	// Shading program to display normals
+	unsigned normalVertShader = readShader("src/normal.vert", GL_VERTEX_SHADER);
+	unsigned normalFragShader = readShader("src/normal.frag", GL_FRAGMENT_SHADER);
 
 	unsigned program = createShaderProgram(vertexShader, fragmentShader);
-	unsigned lightProgram = createShaderProgram(vertexShader, lightShader);
+	unsigned lightProgram = createShaderProgram(lightVertShader, lightFragShader);
+	unsigned normalProgram = createShaderProgram(normalVertShader, normalFragShader);
 
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
+	glDeleteShader(lightVertShader);
+	glDeleteShader(lightFragShader);
+	glDeleteShader(normalVertShader);
+	glDeleteShader(normalFragShader);
 
 	int facesCount = 0;
 	unsigned vao = readObjectFile("/home/stef/Downloads/CubeManual.obj", facesCount);
 
 	unsigned diffuseTex = readTexture("/home/stef/Downloads/box_diffuse.rgb", 500, 500);
 	unsigned specularTex = readTexture("/home/stef/Downloads/box_specular.rgb", 500, 500);
-	//unsigned tex0 = readTexture("/home/stef/Downloads/normalmap.rgb", 512, 512);
+	unsigned normalTex = readTexture("/home/stef/Downloads/normalmap.rgb", 512, 512);
 
 	const float cameraSpeed = 2.f;
 	glm::vec3 cameraPos(0.f, 0.f, 3.f);
@@ -403,25 +438,18 @@ int main() {
 		setProgramUniform(program, cameraPos, "cameraPos");
 		setProgramTexture(program, diffuseTex, 0, "diffuseMap");
 		setProgramTexture(program, specularTex, 1, "specularMap");
+		setProgramTexture(program, normalTex, 2, "normalMap");
 		glDrawArrays(GL_TRIANGLES, 0, facesCount * 3);
 
-#if 1
 		// One more time for the light
 		glm::mat4 lightModel = glm::translate(lightPos) * glm::scale(glm::vec3(0.1, 0.1, 0.1));
-
 		glUseProgram(lightProgram);
 		glBindVertexArray(vao);
-
 		setProgramUniform(lightProgram, proj, "proj");
 		setProgramUniform(lightProgram, view, "view");
 		setProgramUniform(lightProgram, lightModel, "model");
-		setProgramUniform(lightProgram, lightPos, "lightPos");
-		setProgramUniform(lightProgram, cameraPos, "cameraPos");
-		setProgramTexture(lightProgram, diffuseTex, 0, "diffuseMap");
-		setProgramTexture(lightProgram, specularTex, 1, "specularMap");
-
 		glDrawArrays(GL_TRIANGLES, 0, 36);
-#endif
+
 
 		glfwSwapBuffers(window);
 	}

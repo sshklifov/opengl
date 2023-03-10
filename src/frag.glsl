@@ -2,6 +2,7 @@
 
 uniform sampler2D diffuseMap;
 uniform sampler2D specularMap;
+uniform sampler2D normalMap;
 
 uniform vec3 lightPos;
 uniform vec3 cameraPos;
@@ -10,7 +11,7 @@ in vec3 vertexPos;
 in vec2 textureCoords;
 in vec3 normal;
 
-//in mat3 TBN;
+in mat3 TBN;
 
 out vec4 FragColor;
 
@@ -23,8 +24,8 @@ void main() {
 	float ambientStrength = 0.15f;
 	vec3 ambient = ambientStrength * materialAmbient;
 
-	vec3 shadeNormal = normalize(normal);
-	//vec3 shadeNormal = TBN * normalize(texture(tex0, textureCoords).xyz * 2 - 1);
+	//vec3 shadeNormal = normalize(texture(normalMap, textureCoords).xyz * 2 - 1);
+	vec3 shadeNormal = normal;
 
 	vec3 lightDir = normalize(lightPos - vertexPos);
 	float cosLightAngle = dot(shadeNormal, lightDir);
