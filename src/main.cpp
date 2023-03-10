@@ -89,16 +89,6 @@ unsigned readTexture(const char* imageFile, int width, int height) {
 	return tex;
 }
 
-const char* getShaderTypeStr(GLenum type) {
-	if (type == GL_VERTEX_SHADER) {
-		return "vertex";
-	} else if (type == GL_FRAGMENT_SHADER) {
-		return "fragment";
-	} else {
-		return "unknown";
-	}
-}
-
 unsigned readShader(const char* path, GLenum type) {
 	FILE* fp = fopen(path, "r");
 	if (!fp) {
@@ -120,7 +110,7 @@ unsigned readShader(const char* path, GLenum type) {
 	int success = 1;
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
 	if (!success) {
-		printf("Problem with compilation of %s shader!\n", getShaderTypeStr(type));
+		printf("Problem with compilation of %s shader!\n", path);
 		char info[512];
 		glGetShaderInfoLog(shader, 512, NULL, info);
 		printf("Shader info log: %s\n", info);
@@ -141,6 +131,9 @@ unsigned createShaderProgram(std::initializer_list<unsigned> shaders) {
 	glGetProgramiv(program, GL_LINK_STATUS, &success);
 	if (!success) {
 		printf("Problem with linking of shading program!\n");
+		char info[512];
+		glGetProgramInfoLog(program, 512, NULL, info);
+		printf("Program info log: %s\n", info);
 	}
 
 	return program;
@@ -275,6 +268,7 @@ unsigned readObjectFile(const char* path, int normalsMode, int& renderCount) {
 				vni[i] -= 1;
 			}
 
+			const int numNormalSamples = 50;
 			int numTri = quads ? 2 : 1;
 			for (int trid = 0; trid < numTri; ++trid) {
 				// Offset into vi/vti/vni arrays for current triangle
@@ -287,20 +281,30 @@ unsigned readObjectFile(const char* path, int normalsMode, int& renderCount) {
 				glm::vec3 tangent = calculateTangent(pos1, pos2, pos3, uv1, uv2, uv3);
 				glm::vec3 bitangent = calculateBitangent(pos1, pos2, pos3, uv1, uv2, uv3);
 				if (normalsMode) {
-					// Write a single arrow for this triangle
-					const float oneThird = 1.f / 3.f;
-					glm::vec3 point = (pos1 + pos2 + pos3) * oneThird;
-					glm::vec2 uv = (uv1 + uv2 + uv3) * oneThird;
-					glm::vec3 n(0.f, 0.f, 0.f);
-					if (hasNormals) {
-						glm::vec3 n1 = vn[vni[off]], n2 = vn[vni[1+off]], n3 = vn[vni[(2+off)%3]];
-						n = normalize((n1 + n2 + n3) * oneThird);
-					} else {
-						n = calculateNormal(pos1, pos2, pos3); // TODO bug fix
+					for (int i = 0; i < numNormalSamples; ++i) {
+						float u = (float)rand() / (float)RAND_MAX;
+						float v = (float)rand() / (float)RAND_MAX;
+						float w = (float)rand() / (float)RAND_MAX;
+						float sum = (u + v + w);
+						u /= sum;
+						v /= sum;
+						w /= sum;
+						// Write a single arrow for this triangle
+						glm::vec3 point = pos1*u + pos2*v + pos3*w;
+						glm::vec2 uv = uv1*u + uv2*v + uv3*w;
+						glm::vec3 n(0.f, 0.f, 0.f);
+						if (hasNormals && false) {
+							glm::vec3 n1 = vn[vni[off]], n2 = vn[vni[1+off]], n3 = vn[vni[(2+off)%3]];
+							n = normalize(n1*u + n2*v + n3*w);
+						} else {
+							n = calculateNormal(pos1, pos2, pos3);
+						}
+						appendToVertexBuffer(bufferData, point);
+						appendToVertexBuffer(bufferData, uv);
+						appendToVertexBuffer(bufferData, n);
+						appendToVertexBuffer(bufferData, tangent);
+						appendToVertexBuffer(bufferData, bitangent);
 					}
-					appendToVertexBuffer(bufferData, point);
-					appendToVertexBuffer(bufferData, uv);
-					appendToVertexBuffer(bufferData, n);
 				} else {
 					for (int pid = 0; pid < 3; ++pid) {
 						// Current index into vi/vti/vni arrays
@@ -318,7 +322,7 @@ unsigned readObjectFile(const char* path, int normalsMode, int& renderCount) {
 				}
 			}
 
-			int renderCountPerTri = normalsMode ? 1 : 3;
+			int renderCountPerTri = normalsMode ? 1 * numNormalSamples : 3;
 			renderCount += renderCountPerTri * numTri;
 		}
 	}
@@ -334,27 +338,17 @@ unsigned readObjectFile(const char* path, int normalsMode, int& renderCount) {
 	int bufferSize = static_cast<int>(bufferData.size() * sizeof(float));
 	glBufferData(GL_ARRAY_BUFFER, bufferSize, bufferData.data(), GL_STATIC_DRAW);
 
-	if (normalsMode) {
-		// Skip tangent and bitangent for now
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), reinterpret_cast<void*>(5 * sizeof(float)));
-		glEnableVertexAttribArray(2);
-	} else {
-		// Points, uv coordinates, normals, tangent, bitangent.
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), 0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(5 * sizeof(float)));
-		glEnableVertexAttribArray(2);
-		glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(8 * sizeof(float)));
-		glEnableVertexAttribArray(3);
-		glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(11 * sizeof(float)));
-		glEnableVertexAttribArray(4);
-	}
+	// Points, uv coordinates, normals, tangent, bitangent.
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), 0);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(5 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(8 * sizeof(float)));
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), reinterpret_cast<void*>(11 * sizeof(float)));
+	glEnableVertexAttribArray(4);
 
 	return vao;
 }
@@ -455,7 +449,6 @@ int main() {
 		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
 			cameraPos += cameraUp * elapsedTime * cameraSpeed;
 		}
-		// lightPos = cameraPos;
 
 		float rotAngle = 45.f;
 		/* glm::mat4 model = glm::rotate(glm::radians(rotAngle), glm::vec3(1, 1, 1)); */
@@ -465,7 +458,6 @@ int main() {
 		glClearColor(0.6f, 0.6f, 0.6f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-#if 1
 		glUseProgram(lightProgram);
 		glBindVertexArray(vao);
 
@@ -487,18 +479,18 @@ int main() {
 		setProgramUniform(lightProgram, view, "view");
 		setProgramUniform(lightProgram, lightModel, "model");
 		glDrawArrays(GL_TRIANGLES, 0, 36);
-#endif
 
-#if 1
 		// One more time for the normals
-		glUseProgram(normalProgram);
-		glBindVertexArray(normalVao);
-		setProgramUniform(normalProgram, proj, "proj");
-		setProgramUniform(normalProgram, view, "view");
-		setProgramUniform(normalProgram, model, "model");
-		setProgramTexture(normalProgram, normalTex, 0, "normalMap");
-		glDrawArrays(GL_POINTS, 0, renderCountNormals);
-#endif
+		const bool shadeNormals = 1;
+		if (shadeNormals) {
+			glUseProgram(normalProgram);
+			glBindVertexArray(normalVao);
+			setProgramUniform(normalProgram, proj, "proj");
+			setProgramUniform(normalProgram, view, "view");
+			setProgramUniform(normalProgram, model, "model");
+			setProgramTexture(normalProgram, normalTex, 0, "normalMap");
+			glDrawArrays(GL_POINTS, 0, renderCountNormals);
+		}
 
 		glfwSwapBuffers(window);
 	}

@@ -12,16 +12,16 @@ uniform mat4 view;
 
 out vec3 vertexPos;
 out vec2 textureCoords;
-out vec3 normal;
-//out mat3 TBN;
+out vec3 geomNormal;
+
+out mat3 TBN;
 
 void main() {
 	vertexPos = vec3(model * vec4(inPos, 1.0));
 	textureCoords = inTextureCoords;
-	normal = normalize(vec3(model * vec4(inNormal, 0.0)));
+	geomNormal = inNormal;
 	gl_Position = proj * view * model * vec4(inPos, 1.0);
 
-	//vec3 N = cross(inTangent, inBitangent);
-	//TBN = transpose(mat3(inTangent, inBitangent, N));
-	// TBN = mat3(inTangent, inBitangent, N));
+	vec3 N = cross(inTangent, inBitangent);
+	TBN = mat3(inTangent, inBitangent, N);
 }

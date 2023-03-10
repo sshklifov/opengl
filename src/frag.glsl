@@ -4,12 +4,14 @@ uniform sampler2D diffuseMap;
 uniform sampler2D specularMap;
 uniform sampler2D normalMap;
 
+uniform mat4 model;
+
 uniform vec3 lightPos;
 uniform vec3 cameraPos;
 
 in vec3 vertexPos;
 in vec2 textureCoords;
-in vec3 normal;
+in vec3 geomNormal;
 
 in mat3 TBN;
 
@@ -24,8 +26,8 @@ void main() {
 	float ambientStrength = 0.15f;
 	vec3 ambient = ambientStrength * materialAmbient;
 
-	//vec3 shadeNormal = normalize(texture(normalMap, textureCoords).xyz * 2 - 1);
-	vec3 shadeNormal = normalize(normal);
+	vec3 shadeNormal = normalize(texture(normalMap, textureCoords).xyz * 2 - 1);
+	shadeNormal = mat3(model) * TBN * shadeNormal;
 
 	vec3 lightDir = normalize(lightPos - vertexPos);
 	float cosLightAngle = dot(shadeNormal, lightDir);
